@@ -38,7 +38,7 @@ unsigned long requestDueTime;
 struct CurrentlyPlayingInfo {
   const char *albumArtUrl;
   const char *trackName;
-  const char *artists[SPOTIFY_MAX_NUM_ARTISTS];
+  String artist;
   int numArtists;
   const char *albumName;
 };
