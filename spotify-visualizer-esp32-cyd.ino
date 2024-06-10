@@ -48,6 +48,10 @@ CurrentlyPlayingInfo newInfo;
 
 // Network request task
 TaskHandle_t updateInfoTask;
+
+// NewInfo read/write mutex
+SemaphoreHandle_t mutex;
+
 // TFT/Sprites
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite title = TFT_eSprite(&tft);
@@ -93,6 +97,8 @@ void updateCurrentInfo(void *parameters) {
 }
 
 void storeCurrentlyPlayingInfo(CurrentlyPlaying currentlyPlaying) {
+  xSemaphoreTake(mutex, portMAX_DELAY);
+
   newInfo.albumArtUrl = strdup(currentlyPlaying.albumImages[1].url);
   newInfo.trackName = strdup(currentlyPlaying.trackName);
   for(int i = 0; i <= currentlyPlaying.numArtists - 1; i++) {
@@ -100,6 +106,8 @@ void storeCurrentlyPlayingInfo(CurrentlyPlaying currentlyPlaying) {
   }
   newInfo.numArtists = currentlyPlaying.numArtists;
   newInfo.albumName = strdup(currentlyPlaying.albumName);
+
+  xSemaphoreGive(mutex);
 }
 
 void wifiConnect() {
@@ -246,6 +254,7 @@ void loop() {
   //Serial.print("loop() running on core ");
   //Serial.println(xPortGetCoreID());
 
+  xSemaphoreTake(mutex, portMAX_DELAY);
 
   if(newInfo.trackName != NULL) {
     // Compare album arts
@@ -264,6 +273,8 @@ void loop() {
 
     currentInfo = newInfo;
   }
+
+  xSemaphoreGive(mutex);
 
   delay(1);
 }
