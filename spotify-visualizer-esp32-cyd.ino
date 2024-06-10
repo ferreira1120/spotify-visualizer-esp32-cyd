@@ -8,6 +8,8 @@
 #include <SpotifyArduino.h>
 #include <SpotifyArduinoCert.h>
 
+#include <TFT_eSPI.h>
+
 // Wifi credentials
 char ssid[] = "ssid"; // Replace with network ssid
 char password[] = "password"; // Replace with network password
@@ -41,6 +43,11 @@ CurrentlyPlayingInfo newInfo;
 
 // Network request task
 TaskHandle_t updateInfoTask;
+// TFT/Sprites
+TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite title = TFT_eSprite(&tft);
+TFT_eSprite artist = TFT_eSprite(&tft);
+TFT_eSprite album = TFT_eSprite(&tft);
 
 void updateCurrentInfo(void *parameters) {
   Serial.print("updateCurrentInfo() running on core ");
@@ -116,10 +123,27 @@ void wifiConnect() {
   }
 }
 
+void tftSetup() {
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+
+  title.setTextSize(1);
+  title.fillSprite(TFT_BLACK);
+
+  artist.setTextSize(1);
+  artist.fillSprite(TFT_BLACK);
+
+  album.setTextSize(1);
+  album.fillSprite(TFT_BLACK);
+}
+
 void setup() {
   Serial.begin(115200);
 
   wifiConnect();
+
+  tftSetup();
 
   xTaskCreatePinnedToCore(updateCurrentInfo, "updateInfoTask", 10000, NULL, tskIDLE_PRIORITY, &updateInfoTask, 0);
 }
