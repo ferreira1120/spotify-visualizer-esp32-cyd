@@ -54,9 +54,9 @@ SemaphoreHandle_t mutex;
 
 // TFT/Sprites
 TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite title = TFT_eSprite(&tft);
-TFT_eSprite artist = TFT_eSprite(&tft);
-TFT_eSprite album = TFT_eSprite(&tft);
+TFT_eSprite titleSprite = TFT_eSprite(&tft);
+TFT_eSprite artistSprite = TFT_eSprite(&tft);
+TFT_eSprite albumSprite = TFT_eSprite(&tft);
 
 void updateCurrentInfo(void *parameters) {
   Serial.print("updateCurrentInfo() running on core ");
@@ -86,8 +86,12 @@ void storeCurrentlyPlayingInfo(CurrentlyPlaying currentlyPlaying) {
 
   newInfo.albumArtUrl = strdup(currentlyPlaying.albumImages[1].url);
   newInfo.trackName = strdup(currentlyPlaying.trackName);
+  newInfo.artist = "";
   for(int i = 0; i <= currentlyPlaying.numArtists - 1; i++) {
-    newInfo.artists[i] = strdup(currentlyPlaying.artists[i].artistName);
+    newInfo.artist += currentlyPlaying.artists[i].artistName;
+    if(i != currentlyPlaying.numArtists - 1) {
+      newInfo.artist += ", ";
+    }
   }
   newInfo.numArtists = currentlyPlaying.numArtists;
   newInfo.albumName = strdup(currentlyPlaying.albumName);
@@ -95,6 +99,7 @@ void storeCurrentlyPlayingInfo(CurrentlyPlaying currentlyPlaying) {
   xSemaphoreGive(mutex);
 }
 
+//Setups
 void wifiConnect() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -130,14 +135,14 @@ void tftSetup() {
   TJpgDec.setCallback(displayOutput);
   TJpgDec.setSwapBytes(true);
 
-  title.setTextSize(1);
-  title.fillSprite(TFT_BLACK);
+  titleSprite.setTextSize(2);
+  titleSprite.fillSprite(TFT_BLACK);
 
-  artist.setTextSize(1);
-  artist.fillSprite(TFT_BLACK);
+  artistSprite.setTextSize(1);
+  artistSprite.fillSprite(TFT_BLACK);
 
-  album.setTextSize(1);
-  album.fillSprite(TFT_BLACK);
+  albumSprite.setTextSize(1);
+  albumSprite.fillSprite(TFT_BLACK);
 }
 
 void spiffsSetup() {
@@ -235,6 +240,70 @@ void roundAlbumArtCorners() {
   }
 }
 
+int titlePixels = 0;
+
+void displayTrackName(const char *trackName) {
+  int x = 150;
+  int y = 0;
+  int margin = 8;
+
+  if(titleSprite.created()) {
+    titleSprite.deleteSprite();
+  }
+
+  titleSprite.createSprite(tft.width() + titleSprite.textWidth(trackName, 2), 32);
+  Serial.print("Title Sprite Width: ");
+  Serial.println(titleSprite.width());
+  titleSprite.fillSprite(TFT_BLACK);
+  titleSprite.drawString(trackName, max(0, tft.width() / 2 - titleSprite.textWidth(trackName, 2) / 2), 0, 2);
+  titleSprite.pushSprite(y, x + margin);
+  titlePixels = titleSprite.textWidth(trackName, 2) + 40 - tft.width();
+}
+
+int artistPixels = 0;
+
+void displayArtistName(String artist, int numArtists) {
+  int x = 182;
+  int y = 0;
+  int margin = 16;
+
+  if(artistSprite.created()) {
+    artistSprite.deleteSprite();
+  }
+
+  artistSprite.createSprite(tft.width() + artistSprite.textWidth(artist, 2), 16);
+  Serial.print("Artist Sprite Width: ");
+  Serial.println(artistSprite.width());
+  artistSprite.fillSprite(TFT_BLACK);
+  artistSprite.drawString(artist, max(0, tft.width() / 2 - artistSprite.textWidth(artist, 2) / 2), 0, 2);
+  artistSprite.pushSprite(y, x + margin);
+  artistPixels = artistSprite.textWidth(artist, 2) + 40 - tft.width();
+}
+
+void scrollSprites() {
+  if (titleSprite.textWidth(currentInfo.trackName, 2) > tft.width()) {
+    titleSprite.scroll(-1, 0);
+    titleSprite.pushSprite(0, 158);
+    titlePixels--;
+    //Serial.println(pixels);
+    if (titlePixels <= 0) {
+      titleSprite.drawString(currentInfo.trackName, tft.width(), 0, 2);
+      titlePixels = titleSprite.textWidth(currentInfo.trackName, 2) + 40;
+    }
+  }
+
+  if (artistSprite.textWidth(currentInfo.artist, 2) > tft.width()) {
+    artistSprite.scroll(-1, 0);
+    artistSprite.pushSprite(0, 198);
+    artistPixels--;
+    //Serial.println(pixels);
+    if (artistPixels <= 0) {
+      artistSprite.drawString(currentInfo.artist, tft.width(), 0, 2);
+      artistPixels = artistSprite.textWidth(currentInfo.artist, 2) + 40;
+    }
+  }
+}
+
 void loop() {
   //Serial.print("loop() running on core ");
   //Serial.println(xPortGetCoreID());
@@ -256,10 +325,23 @@ void loop() {
       displayImage();
     }
 
+    // Compare song titles
+    if (String(newInfo.trackName) != String(currentInfo.trackName)) {
+      displayTrackName(newInfo.trackName);
+    }
+
+    // Compare song artists
+    if (newInfo.artist != currentInfo.artist) {
+      displayArtistName(newInfo.artist, newInfo.numArtists);
+    }
+
     currentInfo = newInfo;
   }
 
   xSemaphoreGive(mutex);
 
-  delay(1);
+  if(currentInfo.trackName != NULL) {
+    scrollSprites();
+    delay(10);
+  }
 }
