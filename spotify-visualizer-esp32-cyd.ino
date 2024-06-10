@@ -3,12 +3,17 @@
 #include <ESPmDNS.h>
 
 #include <WiFiClient.h>
+#include <HTTPClient.h>
 #include <NetworkClientSecure.h>
 
 #include <SpotifyArduino.h>
 #include <SpotifyArduinoCert.h>
 
 #include <TFT_eSPI.h>
+#include <TJpg_Decoder.h>
+#include <FS.h>
+#include <SPIFFS.h>
+#include <Web_Fetch.h>
 
 // Wifi credentials
 char ssid[] = "ssid"; // Replace with network ssid
@@ -128,6 +133,10 @@ void tftSetup() {
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
 
+  TJpgDec.setJpgScale(2);
+  TJpgDec.setCallback(displayOutput);
+  TJpgDec.setSwapBytes(true);
+
   title.setTextSize(1);
   title.fillSprite(TFT_BLACK);
 
@@ -138,6 +147,12 @@ void tftSetup() {
   album.fillSprite(TFT_BLACK);
 }
 
+void spiffsSetup() {
+  // Initialise SPIFFS
+  SPIFFS.begin(true);
+  Serial.println("\r\nInitialisation done.");
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -145,8 +160,110 @@ void setup() {
 
   tftSetup();
 
+  spiffsSetup();
+
+  mutex = xSemaphoreCreateMutex();
+  if(mutex == NULL)
+  {
+    Serial.println("Mutex cannot be created");
+  }
+
   xTaskCreatePinnedToCore(updateCurrentInfo, "updateInfoTask", 10000, NULL, tskIDLE_PRIORITY, &updateInfoTask, 0);
 }
 
+bool displayOutput(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
+  // Stop further decoding as image is running off bottom of screen
+  if (y >= tft.height())
+    return 0;
+
+  tft.pushImage(x, y, w, h, bitmap);
+
+  // Return 1 to decode next block
+  return 1;
+}
+
+void displayImage() {
+  TJpgDec.drawFsJpg(tft.width() / 2  - 75, 0, "/albumArt.jpg");
+
+  roundAlbumArtCorners();
+}
+
+void roundAlbumArtCorners() {
+  int r = 4;
+  int x = tft.width() / 2 - 75;
+  int y = 0;
+  int w = 150;
+  int h = 150;
+
+  uint32_t color = TFT_BLACK;
+
+  for (int i = x; i <= x + r; i++) {
+    for (int j = y; j <= y + r; j ++) {
+      int xp = - (i - x) + r;
+      int yp = - (j - y) + r;
+
+      if ((xp * xp + yp * yp) > r * r) {
+        tft.drawPixel(i, j, color);
+      }
+    }
+  }
+
+  for (int i = x + h - r - 1; i <= x + h-1; i++) {
+    for (int j = y; j <= y + r; j ++) {
+      int xp = i - (x + h - r-1);
+      int yp = - (j - y) + r;
+
+      if ((xp * xp + yp * yp) > r * r) {
+        tft.drawPixel(i, j, color);
+      }
+    }
+  }
+
+  for (int i = x; i <= x + r; i++) {
+    for (int j = y + w - r; j <= y + w - 1; j ++) {
+      int xp = - (i - x) + r;
+      int yp = j - (y + w - r-1);
+
+      if ((xp * xp + yp * yp) > r * r) {
+        tft.drawPixel(i, j, color);
+      }
+    }
+  }
+
+  for (int i = x + h - r; i <= x + h -1; i++) {
+    for (int j = y + w - r ; j <= y + w-1; j ++) {
+      int xp = i - (x + h - r -1);
+      int yp = j - (y + w - r-1);
+
+      if ((xp * xp + yp * yp) > r * r) {
+        tft.drawPixel(i, j, color);
+      }
+    }
+  }
+}
+
 void loop() {
+  //Serial.print("loop() running on core ");
+  //Serial.println(xPortGetCoreID());
+
+
+  if(newInfo.trackName != NULL) {
+    // Compare album arts
+    if (String(newInfo.albumArtUrl) != String(currentInfo.albumArtUrl)) {
+      Serial.println("Updating Art");
+      
+      if (SPIFFS.exists("/albumArt.jpg") == true) {
+        SPIFFS.remove("/albumArt.jpg");
+      }
+
+      bool loaded_ok = getFile(newInfo.albumArtUrl, "/albumArt.jpg");
+    
+      // Display album art      
+      displayImage();
+    }
+
+    currentInfo = newInfo;
+  }
+
+  delay(1);
 }
