@@ -20,6 +20,76 @@ char clientSecret[] = "clientSecret"; // Replace with spotify app clientPassword
 char spotifyMarket[] = "market"; // Replace with spotify market
 char spotifyRefreshToken[] = "token"; // Replace with spotify account refreshToken
 
+// Spotify client
+NetworkClientSecure client;
+SpotifyArduino spotify(client, clientId, clientSecret, spotifyRefreshToken);
+
+// Request timers
+unsigned long delayBetweenRequests = 1000;
+unsigned long requestDueTime;
+
+struct CurrentlyPlayingInfo {
+  const char *albumArtUrl;
+  const char *trackName;
+  const char *artists[SPOTIFY_MAX_NUM_ARTISTS];
+  int numArtists;
+  const char *albumName;
+};
+
+CurrentlyPlayingInfo currentInfo;
+CurrentlyPlayingInfo newInfo;
+
+// Network request task
+TaskHandle_t updateInfoTask;
+
+void updateCurrentInfo(void *parameters) {
+  Serial.print("updateCurrentInfo() running on core ");
+  Serial.println(xPortGetCoreID());
+  for(;;) {
+    if (millis() > requestDueTime) {
+      // Get currently playing info
+      int status = spotify.getCurrentlyPlaying(storeCurrentlyPlayingInfo, spotifyMarket);
+
+      // Case success
+      if (status == 200) {
+        Serial.println("Successfully got currently playing");
+        Serial.print("Album Art URL: ");
+        Serial.println(newInfo.albumArtUrl);
+        Serial.print("Track Name: ");
+        Serial.println(newInfo.trackName);
+        Serial.print("Artist(s): ");
+        for(int i = 0; i <= newInfo.numArtists - 1; i++) {
+          if(i < newInfo.numArtists - 1) {
+            Serial.print(newInfo.artists[i]);
+            Serial.print(", ");
+          } else {
+            Serial.println(newInfo.artists[i]);
+          }
+        }
+        Serial.print("Album Name: ");
+        Serial.println(newInfo.albumName);
+      } else if (status == 204) {
+        Serial.println("Doesn't seem to be anything playing");
+      } else {
+        Serial.print("Error: ");
+        Serial.println(status);
+      }
+
+      requestDueTime = millis() + delayBetweenRequests;
+    }
+  }
+}
+
+void storeCurrentlyPlayingInfo(CurrentlyPlaying currentlyPlaying) {
+  newInfo.albumArtUrl = strdup(currentlyPlaying.albumImages[1].url);
+  newInfo.trackName = strdup(currentlyPlaying.trackName);
+  for(int i = 0; i <= currentlyPlaying.numArtists - 1; i++) {
+    newInfo.artists[i] = strdup(currentlyPlaying.artists[i].artistName);
+  }
+  newInfo.numArtists = currentlyPlaying.numArtists;
+  newInfo.albumName = strdup(currentlyPlaying.albumName);
+}
+
 void wifiConnect() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -50,6 +120,8 @@ void setup() {
   Serial.begin(115200);
 
   wifiConnect();
+
+  xTaskCreatePinnedToCore(updateCurrentInfo, "updateInfoTask", 10000, NULL, tskIDLE_PRIORITY, &updateInfoTask, 0);
 }
 
 void loop() {
