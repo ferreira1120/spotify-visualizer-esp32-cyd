@@ -69,21 +69,6 @@ void updateCurrentInfo(void *parameters) {
       // Case success
       if (status == 200) {
         Serial.println("Successfully got currently playing");
-        Serial.print("Album Art URL: ");
-        Serial.println(newInfo.albumArtUrl);
-        Serial.print("Track Name: ");
-        Serial.println(newInfo.trackName);
-        Serial.print("Artist(s): ");
-        for(int i = 0; i <= newInfo.numArtists - 1; i++) {
-          if(i < newInfo.numArtists - 1) {
-            Serial.print(newInfo.artists[i]);
-            Serial.print(", ");
-          } else {
-            Serial.println(newInfo.artists[i]);
-          }
-        }
-        Serial.print("Album Name: ");
-        Serial.println(newInfo.albumName);
       } else if (status == 204) {
         Serial.println("Doesn't seem to be anything playing");
       } else {
